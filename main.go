@@ -68,10 +68,9 @@ func main() {
 
 	fmt.Println(rows, cols, minToppings, maxArea)
 
-	evalutionFn := getEvaluationFn(pizza, int16(minToppings))
 	valid := 0
 	figures := generateFigures(minToppings, maxArea)
-	slices := slicePizza(pizza, figures, int16(minToppings), int16(maxArea), evalutionFn)
+	slices := slicePizza(pizza, figures, int16(minToppings), int16(maxArea))
 	fmt.Println(valid)
 	writeSlicesToFile(output_f, slices)
 
@@ -79,12 +78,12 @@ func main() {
 
 }
 
-func slicePizza(pizza [][]int16, figures []coord, L, H int16, evalutionFn func(slice pizzaSlice) (ok bool, score int16)) (slices []pizzaSlice) {
+func slicePizza(pizza [][]int16, figures []coord, L, H int16) (slices []pizzaSlice) {
 	scoreMap := make([][]int16, len(pizza))
 	scoreMap_s := make([][][]int16, len(pizza))
 	evaluations := make([][][]bool, len(pizza))
-	scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, true,
-		coord{}, coord{}, scoreMap, scoreMap_s, evaluations, evalutionFn)
+	scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, true, L,
+		coord{}, coord{}, scoreMap, scoreMap_s, evaluations)
 	//scoreMap, scoreMap_s = buildScoreMap(pizza, figures, false, coord{0, 0}, coord{30, 30}, scoreMap, scoreMap_s,evalutionFn)
 	start := time.Now()
 	topMin := getTopMin(scoreMap_s, 100, true, coord{}, coord{}, make([]coordScore, 0), figures, 100000)
@@ -111,6 +110,7 @@ func slicePizza(pizza [][]int16, figures []coord, L, H int16, evalutionFn func(s
 				fmt.Println("Skipped", tm)
 				break
 			} else {
+				//fmt.Println("REKT")
 				scoreMap_s[i][j][topM.fig] = -1
 				//scoreMap_s[i][j][topM.fig] = -1
 			}
@@ -121,19 +121,20 @@ func slicePizza(pizza [][]int16, figures []coord, L, H int16, evalutionFn func(s
 			if iterations%100 == 0 {
 				full_recalculate = true
 			}
-			scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, full_recalculate,
-				coord{i - 30, j - 30}, coord{i + 30 + fig.row, j + 30 + fig.col},
-				scoreMap, scoreMap_s, evaluations, evalutionFn)
+			scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, full_recalculate, L,
+				coord{i - 100, j - 100}, coord{i + 100 + fig.row, j + 100 + fig.col},
+				scoreMap, scoreMap_s, evaluations)
 			topMin = getTopMin(scoreMap_s, 50, true,
 				coord{}, coord{},
 				make([]coordScore, 0), figures, 3000)
 			fmt.Println(valid)
+			fmt.Println(iterations)
 		} else {
 			fmt.Println("Coordies", i, j)
 			fmt.Println("Whoopsie")
-			scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, true,
+			scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, true, L,
 				coord{i - 30, j - 30}, coord{i + 30 + fig.row, j + 30 + fig.col},
-				scoreMap, scoreMap_s, evaluations, evalutionFn)
+				scoreMap, scoreMap_s, evaluations)
 
 			topMin = getTopMin(scoreMap_s, 3000, true,
 				coord{}, coord{},
@@ -247,25 +248,23 @@ func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 	return
 }
 
-func getEvaluationFn(pizza [][]int16, L int16) func(slice pizzaSlice) (ok bool, score int16) {
-	return func(slice pizzaSlice) (ok bool, score int16) {
-		mushroom, tomato, total := evalSlice(pizza, slice)
-		if mushroom >= L && tomato >= L {
-			return true, total
-		}
-		return false, total
-	}
-}
-
 func normalSort(items []coordScore) {
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].score < items[j].score
 	})
 }
 
-func buildScoreMap(pizza [][]int16, figures []coord, full_recalculate bool,
+func evaluationFn(pizza [][]int16, slice pizzaSlice, L int16) (valid bool, total int16) {
+	mushroom, tomato, total := evalSlice(pizza, slice)
+	if mushroom >= L && tomato >= L {
+		return true, total
+	}
+	return false, total
+}
+
+func buildScoreMap(pizza [][]int16, figures []coord, full_recalculate bool, L int16,
 	start_c, end_c coord, scoreBoi_i [][]int16, scoreBoi_si [][][]int16, evaluations_i [][][]bool,
-	evaluationFn func(slice pizzaSlice) (ok bool, score int16)) (scoreBoi [][]int16, scoreBoi_s [][][]int16, evaluations [][][]bool) {
+) (scoreBoi [][]int16, scoreBoi_s [][][]int16, evaluations [][][]bool) {
 	//start := time.Now()
 
 	figure_count := len(figures)
@@ -307,14 +306,13 @@ func buildScoreMap(pizza [][]int16, figures []coord, full_recalculate bool,
 			if !full_recalculate && (j < start_c.col || j > end_c.col) {
 				continue
 			}
-
+			scoreBoi[i][j] = 0
 			if cel == 0 {
-				scoreBoi[i][j] = 0
 				continue
 			}
 			for f, fig := range figures {
 				s := pizzaSlice{coord{i, j}, coord{i + fig.row - 1, j + fig.col - 1}}
-				ev, t := evaluationFn(s)
+				ev, t := evaluationFn(pizza, s, L)
 				evaluations[i][j][f] = ev
 				if ev {
 					scoreBoi[i][j] += t
