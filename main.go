@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -67,34 +68,10 @@ func main() {
 
 	fmt.Println(rows, cols, minToppings, maxArea)
 
-	evalutionFn := getEvaluationFn(pizza, int16(minToppings), int16(maxArea))
+	evalutionFn := getEvaluationFn(pizza, int16(minToppings))
 	valid := 0
 	figures := generateFigures(minToppings, maxArea)
 	slices := slicePizza(pizza, figures, int16(minToppings), int16(maxArea), evalutionFn)
-
-	//for i := 0; i < len(pizza); i++ {
-	//	for j := 0; j < len(pizza[0]); j++ {
-	//		for _, fig := range figures {
-	//			if i+fig.row < len(pizza) && j+fig.col < len(pizza[0]) {
-	//				s := pizzaSlice{coord{i, j}, coord{i + fig.row-1, j + fig.col-1}}
-	//				ev, t := evalutionFn(s)
-	//				if t > 14 {
-	//					fmt.Println(t)
-	//				}
-	//				if ev == true {
-	//					for k := s.start.row; k <= s.end.row; k ++ {
-	//						for t := s.start.col; t <= s.end.col; t++ {
-	//							pizza[k][t] = 0
-	//							valid++
-	//						}
-	//					}
-	//					slices = append(slices, s)
-	//				}
-	//			}
-	//		}
-	//
-	//	}
-	//}
 	fmt.Println(valid)
 	writeSlicesToFile(output_f, slices)
 
@@ -115,42 +92,48 @@ func slicePizza(pizza [][]int16, figures []coord, L, H int16, evalutionFn func(s
 	elapsed := time.Since(start)
 	fmt.Printf("Calculating top 1 took %s\n", elapsed)
 	i, j := 0, 0
+	iterations := 0
 	for len(topMin) > 0 {
+		iterations++
 		sliced := false
 		fig := figures[topMin[0].fig]
-		for tm, _ := range topMin{
-			topM := topMin[len(topMin) -1 - tm]
+		for tm, _ := range topMin {
+			topM := topMin[len(topMin)-1-tm]
 			//topM := topMin[tm]
 			fig = figures[topM.fig]
 			i, j = topM.place.row, topM.place.col
-			s := pizzaSlice{coord{i, j}, coord{i + fig.row-1, j + fig.col-1}}
-			valid_slice := sliceSlice(pizza, s, L, H)
-			if valid_slice > 0{
+			s := pizzaSlice{coord{i, j}, coord{i + fig.row - 1, j + fig.col - 1}}
+			valid_slice := sliceSlice(pizza, s, L, H, scoreMap_s, scoreMap)
+			if valid_slice > 0 {
 				valid += valid_slice
 				sliced = true
 				slices = append(slices, s)
-				fmt.Println("Skipped",tm)
+				fmt.Println("Skipped", tm)
 				break
-			} else{
+			} else {
 				scoreMap_s[i][j][topM.fig] = -1
 				//scoreMap_s[i][j][topM.fig] = -1
 			}
 		}
 		if sliced {
 			//fmt.Println("Coordies", i, j)
-			scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, false,
-				coord{i - 24, j - 24}, coord{i + 24 + fig.row, j + 24 + fig.col},
-				scoreMap, scoreMap_s, evaluations,evalutionFn)
+			full_recalculate := false
+			if iterations%100 == 0 {
+				full_recalculate = true
+			}
+			scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, full_recalculate,
+				coord{i - 30, j - 30}, coord{i + 30 + fig.row, j + 30 + fig.col},
+				scoreMap, scoreMap_s, evaluations, evalutionFn)
 			topMin = getTopMin(scoreMap_s, 50, true,
 				coord{}, coord{},
 				make([]coordScore, 0), figures, 3000)
 			fmt.Println(valid)
-		} else{
+		} else {
 			fmt.Println("Coordies", i, j)
 			fmt.Println("Whoopsie")
-			//scoreMap, scoreMap_s = buildScoreMap(pizza, figures, false,
-			//	coord{fig.row - 30, fig.col - 30}, coord{fig.row + 30, fig.col + 30},
-			//	scoreMap, scoreMap_s, evalutionFn)
+			scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, true,
+				coord{i - 30, j - 30}, coord{i + 30 + fig.row, j + 30 + fig.col},
+				scoreMap, scoreMap_s, evaluations, evalutionFn)
 
 			topMin = getTopMin(scoreMap_s, 3000, true,
 				coord{}, coord{},
@@ -166,29 +149,32 @@ func slicePizza(pizza [][]int16, figures []coord, L, H int16, evalutionFn func(s
 	return
 }
 
-func sliceSlice(pizza [][]int16, slice pizzaSlice, L, H int16) (valid int){
+func sliceSlice(pizza [][]int16, slice pizzaSlice, L, H int16, scoreMap_s [][][]int16, scoreMap [][]int16) (valid int) {
 	mushroom, tomato, total := evalSlice(pizza, slice)
 	if mushroom >= L && tomato >= L && total <= H {
-		for k := slice.start.row; k <= slice.end.row; k ++ {
+		for k := slice.start.row; k <= slice.end.row; k++ {
 			for t := slice.start.col; t <= slice.end.col; t++ {
 				pizza[k][t] = 0
 				valid++
+				scoreMap[k][t] = -1
+				for l, _ := range scoreMap_s[k][t] {
+					scoreMap_s[k][t][l] = -1
+				}
 			}
 		}
 	}
 	return
 }
 
-
 func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 	start_c, end_c coord, topMin_o []coordScore, figures []coord, max_iter int) (topMin []coordScore) {
 	if !full_recalculate {
 		topMin = topMin_o
 	}
-	maxTopMinScore := int16(9999)
+	maxTopMinScore := int16(16000)
 	iters := 0
 	for i, row := range scoreMap_s {
-		if iters > max_iter{
+		if iters > max_iter {
 			return
 		}
 		if !full_recalculate && (i < start_c.row || i > end_c.row) {
@@ -202,52 +188,52 @@ func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 			if col[len(col)-1] == 0 {
 				continue
 			}
-			smallest_sc := coordScore{coord{i, j}, 9999, 0, 2}
+			smallest_sc := coordScore{coord{i, j}, maxTopMinScore, 0, 2}
 			for f, sc := range col {
-				if f == len(col) -1{
+				if f == len(col)-1 {
 					break
 				}
 				fig_area := int16(figures[f].row * figures[f].col)
 				//fmt.Println("LOL", fig_area)
 				if sc > 0 {
-					if (sc << 4) / fig_area < (smallest_sc.score << 4) / smallest_sc.area {
-						smallest_sc.score = sc
+					if (sc<<4)/fig_area < smallest_sc.score {
+						smallest_sc.score = (sc << 4) / fig_area
 						smallest_sc.fig = int16(f)
 						smallest_sc.area = fig_area
 					}
 				}
 			}
 			//fmt.Println(smallest_sc.score)
-			if smallest_sc.score < 9999 {
+			if smallest_sc.score < 16000 {
 				if uint16(len(topMin)) < maxTake {
 					topMin = append(topMin, smallest_sc)
-					insertionsort(topMin)
-					maxTopMinScore = (topMin[0].score << 4) / topMin[0].area
+					normalSort(topMin)
+					maxTopMinScore = topMin[0].score
 				} else {
-					if (smallest_sc.score << 4) / smallest_sc.area < maxTopMinScore {
+					if smallest_sc.score < maxTopMinScore {
 						for tp, cS := range topMin {
 							//fmt.Println(cS)
-								if tp == len(topMin)-1 {
-									topMin = append(topMin[1:len(topMin)], smallest_sc)
-									//topMin[len(topMin)-1] = smallest_sc
-									break
-								}
+							if tp == len(topMin)-1 {
+								topMin = append(topMin[1:len(topMin)], smallest_sc)
+								//topMin[len(topMin)-1] = smallest_sc
+								break
+							}
 							//} else {
-								if (smallest_sc.score << 4) / smallest_sc.area < (cS.score << 4) / cS.area && tp != len(topMin)-1{
-									//print(smallest_sc.score)
-									continue
+							if smallest_sc.score < cS.score && tp != len(topMin)-1 {
+								//print(smallest_sc.score)
+								continue
+							} else {
+								topMin_t := append(topMin[1:tp+1], smallest_sc)
+								//fmt.Println(topMin_t)
+								//fmt.Println(len(topMin_t))
+								//fmt.Println(topMin)
+								if tp < len(topMin)-1 {
+									topMin = append(topMin_t, topMin[tp:len(topMin)-1]...)
 								} else {
-									topMin_t := append(topMin[1:tp+1], smallest_sc)
-									//fmt.Println(topMin_t)
-									//fmt.Println(len(topMin_t))
-									//fmt.Println(topMin)
-									if tp < len(topMin) -1 {
-										topMin = append(topMin_t, topMin[tp:len(topMin)-1]...)
-									} else{
-										topMin = topMin_t
-									}
-									break
+									topMin = topMin_t
 								}
+								break
+							}
 
 							//}
 						}
@@ -261,27 +247,20 @@ func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 	return
 }
 
-func getEvaluationFn(pizza [][]int16, L, H int16) (func(slice pizzaSlice) (ok bool, score int16)) {
+func getEvaluationFn(pizza [][]int16, L int16) func(slice pizzaSlice) (ok bool, score int16) {
 	return func(slice pizzaSlice) (ok bool, score int16) {
 		mushroom, tomato, total := evalSlice(pizza, slice)
-		if mushroom >= L && tomato >= L && total <= H {
+		if mushroom >= L && tomato >= L {
 			return true, total
 		}
 		return false, total
 	}
 }
 
-func insertionsort(items []coordScore) {
-	var n = len(items)
-	for i := 1; i < n; i++ {
-		j := i
-		for j > 0 {
-			if items[j-1].score-items[j-1].area < items[j].score-items[j].area {
-				items[j-1], items[j] = items[j], items[j-1]
-			}
-			j = j - 1
-		}
-	}
+func normalSort(items []coordScore) {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].score < items[j].score
+	})
 }
 
 func buildScoreMap(pizza [][]int16, figures []coord, full_recalculate bool,
@@ -318,7 +297,6 @@ func buildScoreMap(pizza [][]int16, figures []coord, full_recalculate bool,
 		scoreBoi = scoreBoi_i
 		scoreBoi_s = scoreBoi_si
 	}
-
 
 	//start := time.Now()
 	for i, row := range pizza {
@@ -358,18 +336,18 @@ func buildScoreMap(pizza [][]int16, figures []coord, full_recalculate bool,
 			}
 			for f, fig := range figures {
 				ev := evaluations[i][j][f]
-				if scoreBoi_s[i][j][len(figures)] == -1{
+				if scoreBoi_s[i][j][len(figures)] == -1 {
 					break
 				}
-				if scoreBoi_s[i][j][f] == -1{
+				if scoreBoi_s[i][j][f] == -1 {
 					continue
 				}
-				if !full_recalculate{
+				if !full_recalculate {
 					scoreBoi_s[i][j][f] = 0
 					scoreBoi_s[i][j][len(figures)] = 0
 				}
 				if ev {
-					for r := i; r <= i+fig.row-1; r ++ {
+					for r := i; r <= i+fig.row-1; r++ {
 						for c := j; c <= j+fig.col-1; c++ {
 							scoreBoi_s[i][j][f] += scoreBoi[r][c]
 							scoreBoi_s[i][j][len(figures)] += scoreBoi[r][c]
@@ -379,11 +357,6 @@ func buildScoreMap(pizza [][]int16, figures []coord, full_recalculate bool,
 			}
 		}
 	}
-	//elapsed := time.Since(start)
-	//fmt.Printf("Calculating scores took %s\n", elapsed)
-	//fmt.Print(scoreBoi[0][0], "\n")
-	//fmt.Print(scoreBoi[10][10], "\n")
-	//fmt.Print(scoreBoi[20][20], "\n")
 	return
 }
 
@@ -408,7 +381,7 @@ func evalSlice(pizza [][]int16, s pizzaSlice) (mushroom, tomato, total int16) {
 	if s.end.row >= len(pizza) || s.end.col >= len(pizza[0]) {
 		return 0, 0, 0
 	}
-	for i := s.start.row; i <= s.end.row; i ++ {
+	for i := s.start.row; i <= s.end.row; i++ {
 		for j := s.start.col; j <= s.end.col; j++ {
 
 			if pizza[i][j] == 1 {
@@ -424,7 +397,7 @@ func evalSlice(pizza [][]int16, s pizzaSlice) (mushroom, tomato, total int16) {
 				total = 0
 				return
 			}
-			total ++
+			total++
 		}
 
 	}
