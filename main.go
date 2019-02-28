@@ -86,13 +86,15 @@ func slicePizza(pizza [][]int16, figures []coord, L, H int16) (slices []pizzaSli
 		coord{}, coord{}, scoreMap, scoreMap_s, evaluations)
 	//scoreMap, scoreMap_s = buildScoreMap(pizza, figures, false, coord{0, 0}, coord{30, 30}, scoreMap, scoreMap_s,evalutionFn)
 	start := time.Now()
-	topMin := getTopMin(scoreMap_s, 100, true, coord{}, coord{}, make([]coordScore, 0), figures, 100000)
+	topMin := getTopMin(scoreMap_s, 20, true, coord{}, coord{}, make([]coordScore, 0), figures, 100000)
 	valid := 0
 	elapsed := time.Since(start)
 	fmt.Printf("Calculating top 1 took %s\n", elapsed)
 	i, j := 0, 0
 	iterations := 0
 	for len(topMin) > 0 {
+		//fmt.Println(topMin)
+		//break
 		iterations++
 		sliced := false
 		fig := figures[topMin[0].fig]
@@ -124,9 +126,9 @@ func slicePizza(pizza [][]int16, figures []coord, L, H int16) (slices []pizzaSli
 			scoreMap, scoreMap_s, evaluations = buildScoreMap(pizza, figures, full_recalculate, L,
 				coord{i - 100, j - 100}, coord{i + 100 + fig.row, j + 100 + fig.col},
 				scoreMap, scoreMap_s, evaluations)
-			topMin = getTopMin(scoreMap_s, 50, true,
+			topMin = getTopMin(scoreMap_s, 150, true,
 				coord{}, coord{},
-				make([]coordScore, 0), figures, 3000)
+				make([]coordScore, 0), figures, 5000)
 			fmt.Println(valid)
 			fmt.Println(iterations)
 		} else {
@@ -152,6 +154,7 @@ func slicePizza(pizza [][]int16, figures []coord, L, H int16) (slices []pizzaSli
 
 func sliceSlice(pizza [][]int16, slice pizzaSlice, L, H int16, scoreMap_s [][][]int16, scoreMap [][]int16) (valid int) {
 	mushroom, tomato, total := evalSlice(pizza, slice)
+	valid = 0
 	if mushroom >= L && tomato >= L && total <= H {
 		for k := slice.start.row; k <= slice.end.row; k++ {
 			for t := slice.start.col; t <= slice.end.col; t++ {
@@ -163,6 +166,8 @@ func sliceSlice(pizza [][]int16, slice pizzaSlice, L, H int16, scoreMap_s [][][]
 				}
 			}
 		}
+	} else {
+
 	}
 	return
 }
@@ -186,10 +191,10 @@ func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 			if !full_recalculate && (j < start_c.col || j > end_c.col) {
 				continue
 			}
-			if col[len(col)-1] == 0 {
+			if col[len(col)-1] <= 0 {
 				continue
 			}
-			smallest_sc := coordScore{coord{i, j}, maxTopMinScore, 0, 2}
+			smallest_sc := coordScore{coord{i, j}, maxTopMinScore, -1, 1}
 			for f, sc := range col {
 				if f == len(col)-1 {
 					break
@@ -205,7 +210,7 @@ func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 				}
 			}
 			//fmt.Println(smallest_sc.score)
-			if smallest_sc.score < 16000 {
+			if smallest_sc.score < maxTopMinScore {
 				if uint16(len(topMin)) < maxTake {
 					topMin = append(topMin, smallest_sc)
 					normalSort(topMin)
@@ -225,9 +230,6 @@ func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 								continue
 							} else {
 								topMin_t := append(topMin[1:tp+1], smallest_sc)
-								//fmt.Println(topMin_t)
-								//fmt.Println(len(topMin_t))
-								//fmt.Println(topMin)
 								if tp < len(topMin)-1 {
 									topMin = append(topMin_t, topMin[tp:len(topMin)-1]...)
 								} else {
@@ -236,7 +238,6 @@ func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 								break
 							}
 
-							//}
 						}
 					}
 
@@ -250,7 +251,7 @@ func getTopMin(scoreMap_s [][][]int16, maxTake uint16, full_recalculate bool,
 
 func normalSort(items []coordScore) {
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].score < items[j].score
+		return items[i].score > items[j].score
 	})
 }
 
@@ -340,10 +341,8 @@ func buildScoreMap(pizza [][]int16, figures []coord, full_recalculate bool, L in
 				if scoreBoi_s[i][j][f] == -1 {
 					continue
 				}
-				if !full_recalculate {
-					scoreBoi_s[i][j][f] = 0
-					scoreBoi_s[i][j][len(figures)] = 0
-				}
+				scoreBoi_s[i][j][f] = 0
+				scoreBoi_s[i][j][len(figures)] = 0
 				if ev {
 					for r := i; r <= i+fig.row-1; r++ {
 						for c := j; c <= j+fig.col-1; c++ {
@@ -378,6 +377,7 @@ func writeSlicesToFile(filename string, slices []pizzaSlice) {
 func evalSlice(pizza [][]int16, s pizzaSlice) (mushroom, tomato, total int16) {
 	if s.end.row >= len(pizza) || s.end.col >= len(pizza[0]) {
 		return 0, 0, 0
+
 	}
 	for i := s.start.row; i <= s.end.row; i++ {
 		for j := s.start.col; j <= s.end.col; j++ {
